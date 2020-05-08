@@ -66,6 +66,8 @@ using Grpc.Core.Utils;
 [assembly:TypeForwardedToAttribute(typeof(ClientStreamingServerMethod<,>))]
 [assembly:TypeForwardedToAttribute(typeof(ServerStreamingServerMethod<,>))]
 [assembly:TypeForwardedToAttribute(typeof(DuplexStreamingServerMethod<,>))]
+//[assembly:TypeForwardedToAttribute(typeof(ServerCertificateConfigCallback))] //just remove this line or... does this indicate that the callback is defined in the wrong place?
+[assembly:TypeForwardedToAttribute(typeof(ServerCertificateConfigContext))]
 [assembly:TypeForwardedToAttribute(typeof(ServerServiceDefinition))]
 [assembly:TypeForwardedToAttribute(typeof(ServiceBinderBase))]
 [assembly:TypeForwardedToAttribute(typeof(SslCredentials))]

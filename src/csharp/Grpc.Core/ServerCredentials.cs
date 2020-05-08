@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using Grpc.Core.Internal;
+using Grpc.Core.Logging;
 using Grpc.Core.Utils;
 
 namespace Grpc.Core
@@ -61,7 +62,8 @@ namespace Grpc.Core
     /// Modes of requesting client's SSL certificate by the server.
     /// Corresponds to <c>grpc_ssl_client_certificate_request_type</c>.
     /// </summary>
-    public enum SslClientCertificateRequestType {
+    public enum SslClientCertificateRequestType
+    {
         /// <summary>
         /// Server does not request client certificate.
         /// The certificate presented by the client is not checked by the server at
@@ -111,14 +113,57 @@ namespace Grpc.Core
         /// </summary>
         RequestAndRequireAndVerify,
     }
+    
+    /// <summary>
+    /// Callback results for dynamically loading a SSL certificate config.
+    /// Corresponds to <c>grpc_ssl_certificate_config_reload_status</c>.
+    /// </summary>
+    public enum SslCertificateConfigReloadStatus
+    {
+        /// <summary>
+        /// Corresponds to <c>GRPC_SSL_CERTIFICATE_CONFIG_RELOAD_UNCHANGED</c>.
+        /// </summary>
+        Unchanged = 0,
+
+        /// <summary>
+        /// Corresponds to <c>GRPC_SSL_CERTIFICATE_CONFIG_RELOAD_NEW</c>.
+        /// </summary>
+        New,
+
+        /// <summary>
+        /// Corresponds to <c>GRPC_SSL_CERTIFICATE_CONFIG_RELOAD_FAIL</c>.
+        /// </summary>
+        Fail,
+    }
+
+
+    /// <summary>
+    /// Callback to retrieve updated SSL server certificates, private keys, and
+    /// trusted CAs(for client authentication).
+    /// </summary>
+    /// <returns>Server certificate configuration to use.</returns>
+    public delegate ServerCertificateConfig ServerCertificateConfigCallback();
+
     /// <summary>
     /// Server-side SSL credentials.
     /// </summary>
     public class SslServerCredentials : ServerCredentials
     {
+        static readonly ILogger Logger = GrpcEnvironment.Logger.ForType<SslServerCredentials>();
+
         readonly IList<KeyCertificatePair> keyCertificatePairs;
         readonly string rootCertificates;
         readonly SslClientCertificateRequestType clientCertificateRequest;
+        readonly ServerCertificateConfigCallback serverCertificateConfigCallback;
+
+        /* Ovde definitivno nesto treba da se uradi.
+         * Pogledati u python izmenama mozda se iskristalise sta treba.
+         * Mozda treba da se dodaju polja (mada nisam siguran):
+         *      ServerCertificateConfig initial_cert_config,
+         *      ServerCertificateConfigFetcher cert_config_fetcher,
+         *      bool initial_cert_config_fetched.
+         * Verovatno cu skontati sve kada budem skontao kako radi callback, gde treba da ga deklarisem, i kako se koristi.
+         */
 
         /// <summary>
         /// Creates server-side SSL credentials.
@@ -138,6 +183,39 @@ namespace Grpc.Core
         /// <param name="rootCertificates">PEM encoded client root certificates used to authenticate client.</param>
         /// <param name="clientCertificateRequest">Options for requesting and verifying client certificate.</param>
         public SslServerCredentials(IEnumerable<KeyCertificatePair> keyCertificatePairs, string rootCertificates, SslClientCertificateRequestType clientCertificateRequest)
+            : this(keyCertificatePairs, rootCertificates, clientCertificateRequest, null)
+        {
+        }
+
+        /// <summary>
+        /// Creates server-side SSL credentials.
+        /// This constructor should be used if you wish to reload the certificates
+        /// and keys of the SSL server without interrupting the operation of the server.
+        /// Initial certificate config will be fetched during server initialization.
+        /// </summary>
+        /// <param name="serverCertificateConfig">Server certificate configuration to use.</param>
+        /// <param name="clientCertificateRequest">Options for requesting and verifying client certificate.</param>
+        /// <param name="serverCertificateConfigCallback">Callback for certificate config fetcher.</param>
+        public SslServerCredentials(ServerCertificateConfig serverCertificateConfig, SslClientCertificateRequestType clientCertificateRequest, ServerCertificateConfigCallback serverCertificateConfigCallback)
+            : this(
+                  serverCertificateConfig.KeyCertificatePairs,
+                  serverCertificateConfig.RootCertificates,
+                  clientCertificateRequest,
+                  serverCertificateConfigCallback)
+        {
+        }
+
+        /// <summary>
+        /// Creates server-side SSL credentials.
+        /// This constructor should be used if you wish to reload the certificates
+        /// and keys of the SSL server without interrupting the operation of the server.
+        /// Initial certificate config will be fetched during server initialization.
+        /// </summary>
+        /// <param name="keyCertificatePairs">Key-certificates to use.</param>
+        /// <param name="rootCertificates">PEM encoded client root certificates used to authenticate client.</param>
+        /// <param name="clientCertificateRequest">Options for requesting and verifying client certificate.</param>
+        /// <param name="serverCertificateConfigCallback">Callback for certificate config fetcher.</param>
+        public SslServerCredentials(IEnumerable<KeyCertificatePair> keyCertificatePairs, string rootCertificates, SslClientCertificateRequestType clientCertificateRequest, ServerCertificateConfigCallback serverCertificateConfigCallback)
         {
             this.keyCertificatePairs = new List<KeyCertificatePair>(keyCertificatePairs).AsReadOnly();
             GrpcPreconditions.CheckArgument(this.keyCertificatePairs.Count > 0,
@@ -149,6 +227,7 @@ namespace Grpc.Core
             }
             this.rootCertificates = rootCertificates;
             this.clientCertificateRequest = clientCertificateRequest;
+            this.serverCertificateConfigCallback = serverCertificateConfigCallback;
         }
 
         /// <summary>
@@ -215,7 +294,22 @@ namespace Grpc.Core
                 certChains[i] = keyCertificatePairs[i].CertificateChain;
                 keys[i] = keyCertificatePairs[i].PrivateKey;
             }
-            return ServerCredentialsSafeHandle.CreateSslCredentials(rootCertificates, certChains, keys, clientCertificateRequest);
+
+            IntPtr serverCertificateConfigCallbackTag = IntPtr.Zero;
+            if (serverCertificateConfigCallback != null)
+            {
+                serverCertificateConfigCallbackTag = new ServerCertificateConfigCallbackRegistration(serverCertificateConfigCallback).CallbackRegistration.Tag;
+            }
+
+            Logger.Debug($"serverCertificateConfigCallbackTag={serverCertificateConfigCallbackTag.ToString("X16")}");
+
+            return ServerCredentialsSafeHandle.CreateSslCredentials(
+                rootCertificates,
+                certChains,
+                keys,
+                clientCertificateRequest,
+                serverCertificateConfigCallbackTag,
+                userData: IntPtr.Zero);
         }
     }
 }

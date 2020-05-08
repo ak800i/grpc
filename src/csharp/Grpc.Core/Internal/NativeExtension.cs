@@ -1,3 +1,6 @@
+// I came across this file during the investigation.
+// At the time of this writing I am of the opinion that no chanes are needed to this file.
+
 #region Copyright notice and license
 
 // Copyright 2015 gRPC authors.

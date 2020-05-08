@@ -30,6 +30,17 @@ namespace Grpc.Core.Internal
 {
     internal delegate int UniversalNativeCallback(IntPtr arg0, IntPtr arg1, IntPtr arg2, IntPtr arg3, IntPtr arg4, IntPtr arg5);
 
+    /// <summary>
+    /// Used to initilize native callback dispatcher.
+    /// </summary>
+    /// <param name="tag"></param>
+    /// <param name="arg0"></param>
+    /// <param name="arg1"></param>
+    /// <param name="arg2"></param>
+    /// <param name="arg3"></param>
+    /// <param name="arg4"></param>
+    /// <param name="arg5"></param>
+    /// <returns></returns>
     internal delegate int NativeCallbackDispatcherCallback(IntPtr tag, IntPtr arg0, IntPtr arg1, IntPtr arg2, IntPtr arg3, IntPtr arg4, IntPtr arg5);
 
     internal class NativeCallbackDispatcher

@@ -32,14 +32,40 @@ namespace Grpc.Core.Internal
         {
         }
 
-        public static ServerCredentialsSafeHandle CreateSslCredentials(string pemRootCerts, string[] keyCertPairCertChainArray, string[] keyCertPairPrivateKeyArray, SslClientCertificateRequestType clientCertificateRequest)
+        public static ServerCredentialsSafeHandle CreateSslCredentials(
+            string pemRootCerts,
+            string[] keyCertPairCertChainArray,
+            string[] keyCertPairPrivateKeyArray,
+            SslClientCertificateRequestType clientCertificateRequest,
+            IntPtr serverCertificateConfigCallbackTag,
+            IntPtr userData)
         {
-            GrpcPreconditions.CheckArgument(keyCertPairCertChainArray.Length == keyCertPairPrivateKeyArray.Length);
-            return Native.grpcsharp_ssl_server_credentials_create(pemRootCerts,
-                                                                  keyCertPairCertChainArray, keyCertPairPrivateKeyArray,
-                                                                  new UIntPtr((ulong)keyCertPairCertChainArray.Length),
-                                                                  clientCertificateRequest);
+            ServerCredentialsOptionsSafeHandle serverCredentialsOptions;
+            if (serverCertificateConfigCallbackTag == IntPtr.Zero)
+            {
+                ServerCertificateConfigSafeHandle serverCertificateConfig =
+                    ServerCertificateConfigSafeHandle.CreateSslServerCertificateConfig(pemRootCerts, keyCertPairCertChainArray, keyCertPairPrivateKeyArray); // Remember that this is unnecessary if using CreateSslServerCredentialsOptionsUsingConfigFetcher
+                serverCredentialsOptions =
+                    ServerCredentialsOptionsSafeHandle.CreateSslServerCredentialsOptionsUsingConfig(clientCertificateRequest, serverCertificateConfig);
+            }
+            else
+            {
+                serverCredentialsOptions =
+                    ServerCredentialsOptionsSafeHandle.CreateSslServerCredentialsOptionsUsingConfigFetcher(clientCertificateRequest, serverCertificateConfigCallbackTag, userData);
+            }
+
+            /* Creates an SSL server_credentials object using the provided options struct.
+             *  - Takes ownership of the options parameter.
+             */
+            return Native.grpcsharp_ssl_server_credentials_create_with_options(serverCredentialsOptions);
         }
+
+        /* Ovde se preslo sa depricated metode na:
+         *      grpcsharp_ssl_server_credentials_create_with_options
+         * i plus se na osnovu postojanja callback-a oducuje da li se options pravi pomocu
+         *      CreateSslServerCredentialsOptionsUsingConfig ili
+         *      CreateSslServerCredentialsOptionsUsingConfigFetcher.
+         */
 
         protected override bool ReleaseHandle()
         {

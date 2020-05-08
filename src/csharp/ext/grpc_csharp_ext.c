@@ -1076,6 +1076,138 @@ grpcsharp_ssl_server_credentials_create(
   return creds;
 }
 
+// I created this in order to have PemKeyPairSafeHandle,
+// which would replace the two parameters in
+// grpcsharp_ssl_server_credentials_create and
+// grpcsharp_ssl_server_certificate_config_create.
+// Let's hold off on this before I confirm everything else works.
+GPR_EXPORT grpc_ssl_pem_key_cert_pair* GPR_CALLTYPE
+grpcsharp_ssl_pem_key_cert_pair_create(
+    const char** key_cert_pair_cert_chain_array,
+    const char** key_cert_pair_private_key_array,
+    size_t num_key_cert_pairs) {
+  size_t i;
+  grpc_ssl_pem_key_cert_pair* key_cert_pairs =
+      gpr_malloc(sizeof(grpc_ssl_pem_key_cert_pair) * num_key_cert_pairs);
+  memset(key_cert_pairs, 0,
+         sizeof(grpc_ssl_pem_key_cert_pair) * num_key_cert_pairs);
+
+  for (i = 0; i < num_key_cert_pairs; i++) {
+    if (key_cert_pair_cert_chain_array[i] ||
+        key_cert_pair_private_key_array[i]) {
+      key_cert_pairs[i].cert_chain = key_cert_pair_cert_chain_array[i];
+      key_cert_pairs[i].private_key = key_cert_pair_private_key_array[i];
+    }
+  }
+
+  return key_cert_pairs;
+}
+
+GPR_EXPORT void GPR_CALLTYPE
+grpcsharp_ssl_pem_key_cert_pair_destroy(
+    grpc_ssl_pem_key_cert_pair* pem_key_cert_pairs) {
+  gpr_free(pem_key_cert_pairs);
+}
+
+/* Ovde treba da se dodaju wrapperi za:
+ *    -grpc_ssl_server_certificate_config_create
+ *    -grpc_ssl_server_certificate_config_destroy
+ *    -grpc_ssl_server_credentials_create_options_using_config
+ *    -grpc_ssl_server_credentials_create_options_using_config_fetcher
+ *    -grpc_ssl_server_credentials_options_destroy
+ *    -grpc_ssl_server_credentials_create_with_options
+ * ili neki podskup ovih gore stavki.
+ */
+
+GPR_EXPORT grpc_ssl_server_certificate_config* GPR_CALLTYPE
+grpcsharp_ssl_server_certificate_config_create(
+    const char* pem_root_certs,
+    const char** key_cert_pair_cert_chain_array,
+    const char** key_cert_pair_private_key_array,
+    size_t num_key_cert_pairs) {
+  size_t i;
+  grpc_ssl_server_certificate_config* config;
+  grpc_ssl_pem_key_cert_pair* key_cert_pairs =
+      gpr_malloc(sizeof(grpc_ssl_pem_key_cert_pair) * num_key_cert_pairs);
+  memset(key_cert_pairs, 0,
+         sizeof(grpc_ssl_pem_key_cert_pair) * num_key_cert_pairs);
+  
+  for (i = 0; i < num_key_cert_pairs; i++) {
+    if (key_cert_pair_cert_chain_array[i] ||
+        key_cert_pair_private_key_array[i]) {
+      key_cert_pairs[i].cert_chain = key_cert_pair_cert_chain_array[i];
+      key_cert_pairs[i].private_key = key_cert_pair_private_key_array[i];
+    }
+  }
+
+  config = grpc_ssl_server_certificate_config_create(
+      pem_root_certs,
+      key_cert_pairs,
+      num_key_cert_pairs);
+  gpr_free(key_cert_pairs);
+  return config;
+}
+
+GPR_EXPORT void GPR_CALLTYPE
+grpcsharp_ssl_server_certificate_config_destroy(
+    grpc_ssl_server_certificate_config* config) {
+  return grpc_ssl_server_certificate_config_destroy(config);
+}
+
+GPR_EXPORT grpc_ssl_server_credentials_options* GPR_CALLTYPE
+grpcsharp_ssl_server_credentials_create_options_using_config(
+    grpc_ssl_client_certificate_request_type client_certificate_request,
+    grpc_ssl_server_certificate_config* certificate_config) {
+  return grpc_ssl_server_credentials_create_options_using_config(
+      client_certificate_request,
+      certificate_config);
+}
+
+grpc_ssl_server_certificate_config_callback saved_cb = NULL;
+
+// do I need a destroy?
+static void grpcsharp_ssl_server_certificate_config_callback_destroy_handler(
+    void* userdata) {
+  native_callback_dispatcher(saved_cb, userdata, NULL, (void*)1, NULL, NULL,
+                             NULL);
+}
+
+// definition of this needs to be the same as the definition of the callback
+static grpc_ssl_certificate_config_reload_status
+grpcsharp_ssl_server_certificate_config_callback_handler(
+    void* user_data, grpc_ssl_server_certificate_config** config) {
+  return native_callback_dispatcher(saved_cb, user_data, (void**)config,
+                                    (void*)0, NULL, NULL, NULL);
+}
+
+GPR_EXPORT void GPR_CALLTYPE grpcsharp_write_config_to_pointer(
+    void** pointer_to_location, grpc_ssl_server_certificate_config* config) {
+  *pointer_to_location = config;
+}
+
+GPR_EXPORT grpc_ssl_server_credentials_options* GPR_CALLTYPE
+grpcsharp_ssl_server_credentials_create_options_using_config_fetcher(
+    grpc_ssl_client_certificate_request_type client_certificate_request,
+    grpc_ssl_server_certificate_config_callback cb, void* user_data) {
+  saved_cb = cb;
+  return grpc_ssl_server_credentials_create_options_using_config_fetcher(
+      client_certificate_request,
+      grpcsharp_ssl_server_certificate_config_callback_handler,
+      user_data);
+}
+
+GPR_EXPORT void GPR_CALLTYPE
+grpcsharp_ssl_server_credentials_options_destroy(
+    grpc_ssl_server_credentials_options* options) {
+  return grpc_ssl_server_credentials_options_destroy(options);
+}
+
+GPR_EXPORT grpc_server_credentials* GPR_CALLTYPE
+grpcsharp_ssl_server_credentials_create_with_options(
+    grpc_ssl_server_credentials_options* options) {
+  return grpc_ssl_server_credentials_create_with_options(options);
+}
+
 GPR_EXPORT void GPR_CALLTYPE
 grpcsharp_server_credentials_release(grpc_server_credentials* creds) {
   grpc_server_credentials_release(creds);
